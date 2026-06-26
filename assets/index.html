@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>OAU Aspirants CBT â€” Home</title>
+<meta name="description" content="Daily CBT practice for OAU Post-UTME and JAMB aspirants.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand">
+      <span class="crest">OAU</span>
+      <div>
+        <h1>Aspirants CBT</h1>
+        <span class="tagline">Practice. Time yourself. Improve.</span>
+      </div>
+    </div>
+    <a class="header-link" href="leaderboard.html">Leaderboard</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="slip" id="slip">
+    <div class="eyebrow">Admission Slip</div>
+    <h2 style="font-size:1.1rem; margin-bottom:2px;">Enter your full name to begin</h2>
+    <p class="helper-text">Your name is saved for this browser session only, so you won't need to retype it between subjects today.</p>
+    <div class="slip-row" id="slipForm">
+      <input type="text" id="nameInput" placeholder="e.g. Adebayo Folasade T." autocomplete="name">
+      <button class="btn btn-primary" id="saveNameBtn">Continue</button>
+    </div>
+    <div class="slip-row" id="slipSaved" style="display:none;">
+      <span class="name-pill">
+        ðŸ‘¤ <span id="savedNameText"></span>
+        <button id="changeNameBtn">change</button>
+      </span>
+    </div>
+  </section>
+
+  <div class="section-title">
+    <h2 style="font-size:1.15rem;">Today's available subjects</h2>
+    <span class="count" id="subjectCount"></span>
+  </div>
+
+  <div id="subjectGrid" class="subject-grid">
+    <p class="helper-text">Loading today's subjectsâ€¦</p>
+  </div>
+
+</main>
+
+<footer>
+  OAU Aspirants Community Â· CBT Practice Portal
+</footer>
+
+<script src="assets/js/app.js"></script>
+<script>
+function renderNameUI(){
+  const name = CBT.getName();
+  const form = document.getElementById("slipForm");
+  const saved = document.getElementById("slipSaved");
+  if(name){
+    form.style.display = "none";
+    saved.style.display = "flex";
+    document.getElementById("savedNameText").textContent = name;
+  } else {
+    form.style.display = "flex";
+    saved.style.display = "none";
+  }
+}
+
+document.getElementById("saveNameBtn").addEventListener("click", () => {
+  const val = document.getElementById("nameInput").value.trim();
+  if(val.length < 3){
+    CBT.toast("Please enter your full name.", true);
+    return;
+  }
+  if(val.split(/\s+/).length < 2){
+    CBT.toast("Please enter both first and last name.", true);
+    return;
+  }
+  CBT.setName(val);
+  renderNameUI();
+  CBT.toast("Welcome, " + val + "!");
+});
+
+document.getElementById("nameInput").addEventListener("keydown", (e) => {
+  if(e.key === "Enter") document.getElementById("saveNameBtn").click();
+});
+
+document.getElementById("changeNameBtn").addEventListener("click", () => {
+  CBT.clearName();
+  document.getElementById("nameInput").value = "";
+  renderNameUI();
+});
+
+async function renderSubjects(){
+  const grid = document.getElementById("subjectGrid");
+  const countEl = document.getElementById("subjectCount");
+  try{
+    const config = await CBT.fetchConfig();
+    const active = config.activeSubjects || [];
+    countEl.textContent = active.length + " subject" + (active.length === 1 ? "" : "s") + " today";
+
+    if(active.length === 0){
+      grid.innerHTML = `<div class="empty-state">No tests have been published yet today. Please check back soon.</div>`;
+      return;
+    }
+
+    const completed = CBT.getCompleted();
+
+    // Fetch question counts so we can show count + duration without a manual edit each time
+    const cards = await Promise.all(active.map(async (key) => {
+      const meta = config.subjects[key];
+      if(!meta) return "";
+      let qCount = "â€”", duration = "â€”";
+      try{
+        const test = await CBT.fetchTest(meta.file);
+        qCount = test.questions.length;
+        duration = CBT.durationMinutes(qCount);
+      }catch(e){ /* file missing â€” still show the card, just without counts */ }
+
+      const isDone = completed.includes(key);
+      return `
+        <div class="subject-card ${isDone ? 'completed' : ''}">
+          <h3>${meta.title}</h3>
+          <div class="subject-meta">
+            <span>${qCount} questions</span>
+            <span>${duration} min</span>
+          </div>
+          <span class="subject-status ${isDone ? 'done' : 'available'}">${isDone ? 'âœ“ Completed today' : 'Available now'}</span>
+          <a class="btn ${isDone ? 'btn-outline' : 'btn-primary'} btn-block" href="test.html?subject=${encodeURIComponent(key)}" style="margin-top:6px;">
+            ${isDone ? 'Retake test' : 'Start test'}
+          </a>
+        </div>`;
+    }));
+
+    grid.innerHTML = cards.join("");
+  }catch(err){
+    grid.innerHTML = `<div class="empty-state">Couldn't load today's subjects. Please refresh the page.</div>`;
+    console.error(err);
+  }
+}
+
+renderNameUI();
+renderSubjects();
+</script>
+</body>
+      </html>
