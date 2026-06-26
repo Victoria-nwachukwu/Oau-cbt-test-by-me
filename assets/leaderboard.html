@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leaderboard â€” OAU Aspirants CBT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand">
+      <span class="crest">OAU</span>
+      <div>
+        <h1>Aspirants CBT</h1>
+        <span class="tagline">Practice. Time yourself. Improve.</span>
+      </div>
+    </div>
+    <a class="header-link" href="index.html">Home</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="section-title">
+    <h2 style="font-size:1.15rem;">Leaderboard</h2>
+  </div>
+  <p class="helper-text" style="margin-top:-8px; margin-bottom:18px;">
+    Rankings only â€” exact scores and answer sheets stay private. Great performance today could put your name at the top!
+  </p>
+
+  <div class="slip" style="padding:14px 16px;">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+      <label style="font-size:0.88rem; font-weight:600;">Subject:
+        <select id="subjectFilter" style="margin-left:6px; padding:8px 10px; border-radius:6px; border:1.5px solid var(--line); font-family:var(--font-body);">
+          <option value="">All subjects</option>
+        </select>
+      </label>
+      <label style="font-size:0.88rem; font-weight:600; display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="todayOnly" checked> Today only
+      </label>
+    </div>
+  </div>
+
+  <div id="lbList"><p class="helper-text">Loading leaderboardâ€¦</p></div>
+</main>
+
+<footer>OAU Aspirants Community Â· CBT Practice Portal</footer>
+
+<script src="assets/js/app.js"></script>
+<script>
+// Set to true if your admin wants percentages shown publicly instead of rank-only.
+const SHOW_PERCENTAGE_PUBLICLY = false;
+
+let allRows = [];
+
+function medalClass(rank){
+  if(rank === 1) return "gold";
+  if(rank === 2) return "silver";
+  if(rank === 3) return "bronze";
+  return "";
+}
+
+function render(){
+  const subj = document.getElementById("subjectFilter").value;
+  const todayOnly = document.getElementById("todayOnly").checked;
+  const today = CBT.todayStr();
+
+  let rows = allRows.slice();
+  if(subj) rows = rows.filter(r => r.subject === subj);
+  if(todayOnly) rows = rows.filter(r => r.date === today);
+
+  rows.sort((a, b) => (b.percentage || 0) - (a.percentage || 0));
+
+  const list = document.getElementById("lbList");
+  if(rows.length === 0){
+    list.innerHTML = `<div class="empty-state">No results yet for this filter. Be the first to take a test today!</div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map((r, i) => {
+    const rank = i + 1;
+    return `
+      <div class="lb-row">
+        <span class="lb-rank ${medalClass(rank)}">${rank}</span>
+        <span class="lb-name">${r.name}</span>
+        <span style="font-size:0.8rem; color:var(--muted);">${r.subject}</span>
+        ${SHOW_PERCENTAGE_PUBLICLY ? `<span style="font-family:var(--font-mono); font-weight:700; color:var(--ivy);">${r.percentage}%</span>` : ""}
+        <span class="lb-date">${r.date}</span>
+      </div>`;
+  }).join("");
+}
+
+async function loadLeaderboard(){
+  if(!API_URL || API_URL.indexOf("PASTE_YOUR") === 0){
+    document.getElementById("lbList").innerHTML =
+      `<div class="empty-state">The leaderboard backend hasn't been connected yet. Set API_URL in assets/js/app.js â€” see README.md.</div>`;
+    return;
+  }
+  try{
+    const res = await fetch(API_URL + "?action=leaderboard");
+    const data = await res.json();
+    if(data.status !== "success") throw new Error(data.message || "Unknown error");
+    allRows = data.leaderboard || [];
+
+    const subjects = [...new Set(allRows.map(r => r.subject))].sort();
+    const sel = document.getElementById("subjectFilter");
+    subjects.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s; opt.textContent = s;
+      sel.appendChild(opt);
+    });
+
+    render();
+  }catch(err){
+    console.error(err);
+    document.getElementById("lbList").innerHTML = `<div class="empty-state">Couldn't load the leaderboard right now. Please try again later.</div>`;
+  }
+}
+
+document.getElementById("subjectFilter").addEventListener("change", render);
+document.getElementById("todayOnly").addEventListener("change", render);
+loadLeaderboard();
+</script>
+</body>
+  </html>
