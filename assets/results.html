@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test Review â€” OAU Aspirants CBT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand">
+      <span class="crest">OAU</span>
+      <div>
+        <h1>Aspirants CBT</h1>
+        <span class="tagline">Practice. Time yourself. Improve.</span>
+      </div>
+    </div>
+    <a class="header-link" href="index.html">Home</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="review-banner">
+    <h2 id="bannerTitle" style="color:#fff; margin:0;">Test submitted</h2>
+    <p id="bannerSub">Here is how each of your answers compares with the correct answer. Your score has been recorded â€” it isn't shown here, but your community admin can see it.</p>
+  </div>
+
+  <div id="reviewList"></div>
+
+  <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+    <a class="btn btn-primary" href="index.html">Take another subject</a>
+    <a class="btn btn-outline" href="leaderboard.html">View leaderboard</a>
+  </div>
+</main>
+
+<footer>OAU Aspirants Community Â· CBT Practice Portal</footer>
+
+<script src="assets/js/app.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const subjectKey = params.get("subject");
+const raw = subjectKey ? sessionStorage.getItem("cbt_review_" + subjectKey) : null;
+
+if(!raw){
+  document.getElementById("reviewList").innerHTML =
+    `<div class="empty-state">No review found for this session. <a href="index.html">Go back home</a> and take a test first.</div>`;
+} else {
+  const data = JSON.parse(raw);
+  document.getElementById("bannerTitle").textContent = data.subjectTitle + " â€” Review";
+  document.getElementById("bannerSub").textContent =
+    (data.autoSubmitted ? "Time elapsed and your test was submitted automatically. " : "") +
+    "Here is how each of your answers compares with the correct answer.";
+
+  const list = document.getElementById("reviewList");
+  list.innerHTML = data.review.map((r, idx) => {
+    const cls = r.isCorrect ? "correct" : "incorrect";
+    const selectedText = r.selected ? `${r.selected}. ${r.options[r.selected]}` : "No answer selected";
+    return `
+      <div class="review-card ${cls}">
+        <span class="review-tag ${cls}">${r.isCorrect ? "âœ“ Correct" : "âœ• Incorrect"}</span>
+        <p class="question-text" style="margin-top:0;"><b>Q${idx + 1}.</b> ${r.question}</p>
+        <p class="review-answer-row">Your answer: <b>${selectedText}</b></p>
+        <p class="review-answer-row">Correct answer: <b>${r.correct}. ${r.options[r.correct]}</b></p>
+        <div class="review-note">
+          <span class="note-label">Explanation:</span> ${r.explanation}
+        </div>
+      </div>`;
+  }).join("");
+}
+</script>
+</body>
+</html>
