@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Test in progress â€” OAU Aspirants CBT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<div class="test-header">
+  <div class="wrap">
+    <div class="test-header-inner">
+      <div>
+        <p class="test-title" id="subjectTitle">Loadingâ€¦<small id="candidateLine"></small></p>
+      </div>
+      <div class="timer-badge" id="timerBadge">
+        <span class="dot"></span>
+        <span id="timerText">--:--</span>
+      </div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+</div>
+
+<main class="wrap" id="questionsWrap" style="padding-top:20px;">
+  <p class="helper-text">Loading testâ€¦</p>
+</main>
+
+<div class="submit-bar">
+  <div class="wrap submit-bar-inner">
+    <span class="answered-count" id="answeredCount">0 / 0 answered</span>
+    <button class="btn btn-primary" id="submitBtn">Submit test</button>
+  </div>
+</div>
+
+<script src="assets/js/app.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const subjectKey = params.get("subject");
+let test = null;
+let answers = {};         // {questionId: "A"|"B"|"C"|"D"}
+let remainingSeconds = 0;
+let timerHandle = null;
+let submitted = false;
+
+const name = CBT.requireName();
+
+function $(sel){ return document.querySelector(sel); }
+
+function letterFor(i){ return ["A","B","C","D"][i]; }
+
+function renderQuestions(){
+  const wrap = $("#questionsWrap");
+  wrap.innerHTML = test.questions.map((q, idx) => {
+    const opts = Object.keys(q.options).map(letter => `
+      <label class="option-row" data-qid="${q.id}" data-letter="${letter}">
+        <input type="radio" name="q${q.id}" value="${letter}">
+        <span class="option-bubble">${letter}</span>
+        <span class="option-label">${q.options[letter]}</span>
+      </label>`).join("");
+    return `
+      <div class="question-card" id="qcard-${q.id}">
+        <div class="question-number">Question ${idx + 1} of ${test.questions.length}</div>
+        <p class="question-text">${q.question}</p>
+        <div class="options-list">${opts}</div>
+      </div>`;
+  }).join("");
+
+  wrap.querySelectorAll(".option-row").forEach(row => {
+    row.addEventListener("click", () => {
+      if(submitted) return;
+      const qid = row.dataset.qid;
+      const letter = row.dataset.letter;
+      answers[qid] = letter;
+      document.querySelectorAll(`.option-row[data-qid="${qid}"]`).forEach(r => r.classList.remove("selected"));
+      row.classList.add("selected");
+      row.querySelector("input").checked = true;
+      updateProgress();
+    });
+  });
+}
+
+function updateProgress(){
+  const total = test.questions.length;
+  const answeredN = Object.keys(answers).length;
+  $("#answeredCount").textContent = `${answeredN} / ${total} answered`;
+  $("#progressFill").style.width = Math.round((answeredN / total) * 100) + "%";
+}
+
+function startTimer(durationMinutes){
+  remainingSeconds = durationMinutes * 60;
+  updateTimerDisplay();
+  timerHandle = setInterval(() => {
+    remainingSeconds--;
+    updateTimerDisplay();
+    if(remainingSeconds <= 0){
+      clearInterval(timerHandle);
+      CBT.toast("Time's up! Submitting your testâ€¦");
+      doSubmit(true);
+    }
+  }, 1000);
+}
+
+function updateTimerDisplay(){
+  $("#timerText").textContent = CBT.formatClock(Math.max(remainingSeconds, 0));
+  const badge = $("#timerBadge");
+  if(remainingSeconds <= 120) badge.classList.add("warning");
+  else badge.classList.remove("warning");
+}
+
+function lockTest(){
+  submitted = true;
+  document.querySelectorAll(".option-row input").forEach(i => i.disabled = true);
+  document.querySelectorAll(".option-row").forEach(r => r.style.pointerEvents = "none");
+  $("#submitBtn").disabled = true;
+  $("#submitBtn").textContent = "Submitted";
+  if(timerHandle) clearInterval(timerHandle);
+  window.onbeforeunload = null;
+}
+
+async function doSubmit(isAutoSubmit){
+  if(submitted) return;
+  lockTest();
+
+  let score = 0;
+  const review = test.questions.map(q => {
+    const selected = answers[q.id] || null;
+    const isCorrect = selected === q.answer;
+    if(isCorrect) score++;
+    return {
+      question: q.question,
+      options: q.options,
+      selected,
+      correct: q.answer,
+      isCorrect,
+      explanation: q.explanation
+    };
+  });
+
+  const total = test.questions.length;
+
+  sessionStorage.setItem("cbt_review_" + subjectKey, JSON.stringify({
+    subjectTitle: test.title,
+    name,
+    review,
+    autoSubmitted: !!isAutoSubmit,
+    submittedAt: new Date().toISOString()
+  }));
+
+  CBT.markCompleted(subjectKey);
+
+  // Score is sent to the backend/admin only â€” never shown to the student.
+  await CBT.submitResult({ name, subject: test.title, score, total });
+
+  window.location.href = "results.html?subject=" + encodeURIComponent(subjectKey);
+}
+
+$("#submitBtn").addEventListener("click", () => {
+  const total = test.questions.length;
+  const answeredN = Object.keys(answers).length;
+  if(answeredN < total){
+    const ok = confirm(`You have ${total - answeredN} unanswered question(s). Submit anyway?`);
+    if(!ok) return;
+  } else {
+    const ok = confirm("Submit your test now? You cannot change answers afterwards.");
+    if(!ok) return;
+  }
+  doSubmit(false);
+});
+
+async function init(){
+  if(!name) return; // requireName already redirected
+  if(!subjectKey){
+    window.location.href = "index.html";
+    return;
+  }
+  try{
+    const config = await CBT.fetchConfig();
+    if(!config.activeSubjects.includes(subjectKey)){
+      $("#questionsWrap").innerHTML = `<div class="empty-state">This subject is not available today. <a href="index.html">Go back home</a>.</div>`;
+      return;
+    }
+    const meta = config.subjects[subjectKey];
+    test = await CBT.fetchTest(meta.file);
+    test.title = test.title || meta.title;
+
+    $("#subjectTitle").innerHTML = `${test.title}<small>Candidate: ${name}</small>`;
+    document.title = test.title + " â€” OAU Aspirants CBT";
+
+    renderQuestions();
+    updateProgress();
+
+    const duration = CBT.durationMinutes(test.questions.length);
+    startTimer(duration);
+
+    window.onbeforeunload = function(e){
+      if(submitted) return undefined;
+      e.preventDefault();
+      return "Your test is still in progress. Leaving now means losing your progress.";
+    };
+  }catch(err){
+    console.error(err);
+    $("#questionsWrap").innerHTML = `<div class="empty-state">Couldn't load this test. Please go back and try again.</div>`;
+  }
+}
+
+init();
+</script>
+</body>
+  </html>
