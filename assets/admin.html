@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard â€” OAU Aspirants CBT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand">
+      <span class="crest">OAU</span>
+      <div>
+        <h1>Admin Dashboard</h1>
+        <span class="tagline">Visible to admin only</span>
+      </div>
+    </div>
+    <a class="header-link" href="index.html">Student site</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="admin-gate" id="gate">
+    <h2 style="font-size:1.15rem;">Enter admin key</h2>
+    <p class="helper-text">This is the ADMIN_KEY you set in your Google Apps Script backend. It is not stored anywhere except this browser's current session.</p>
+    <input type="password" id="keyInput" placeholder="Admin key" style="width:100%; padding:11px 14px; margin:12px 0; border:1.5px solid var(--line); border-radius:8px; font-family:var(--font-body);">
+    <button class="btn btn-primary btn-block" id="unlockBtn">Unlock dashboard</button>
+    <p class="helper-text" id="gateError" style="color:var(--danger);"></p>
+  </div>
+
+  <div id="dashboard" style="display:none;">
+
+    <div class="stat-grid" id="statGrid"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+      <h2 style="font-size:1.1rem; margin:0;">All submissions</h2>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-outline btn-sm" id="refreshBtn">Refresh</button>
+        <button class="btn btn-gold btn-sm" id="csvBtn">Download CSV</button>
+        <button class="btn btn-outline btn-sm" id="lockBtn">Lock</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Subject</th><th>Score</th><th>%</th><th>Date</th><th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<footer>OAU Aspirants Community Â· CBT Practice Portal</footer>
+
+<script src="assets/js/app.js"></script>
+<script>
+let allResults = [];
+
+function setError(msg){ document.getElementById("gateError").textContent = msg; }
+
+async function unlock(){
+  const key = document.getElementById("keyInput").value.trim();
+  if(!key){ setError("Please enter the admin key."); return; }
+  if(!API_URL || API_URL.indexOf("PASTE_YOUR") === 0){
+    setError("Backend not connected yet. Set API_URL in assets/js/app.js â€” see README.md.");
+    return;
+  }
+  setError("Checkingâ€¦");
+  try{
+    const res = await fetch(API_URL + "?action=admin&key=" + encodeURIComponent(key));
+    const data = await res.json();
+    if(data.status !== "success"){
+      setError(data.message === "Unauthorized" ? "Incorrect admin key." : (data.message || "Something went wrong."));
+      return;
+    }
+    allResults = data.results || [];
+    sessionStorage.setItem("cbt_admin_key", key);
+    document.getElementById("gate").style.display = "none";
+    document.getElementById("dashboard").style.display = "block";
+    renderDashboard();
+  }catch(err){
+    console.error(err);
+    setError("Could not reach the backend. Check your internet connection.");
+  }
+}
+
+function renderDashboard(){
+  const total = allResults.length;
+  const uniqueStudents = new Set(allResults.map(r => r.name)).size;
+  const avgPct = total ? Math.round(allResults.reduce((s, r) => s + Number(r.percentage || 0), 0) / total) : 0;
+  const subjectsToday = new Set(allResults.filter(r => r.date === CBT.todayStr()).map(r => r.subject)).size;
+
+  document.getElementById("statGrid").innerHTML = `
+    <div class="stat-card"><div class="num">${total}</div><div class="label">Total submissions</div></div>
+    <div class="stat-card"><div class="num">${uniqueStudents}</div><div class="label">Unique students</div></div>
+    <div class="stat-card"><div class="num">${avgPct}%</div><div class="label">Average score</div></div>
+    <div class="stat-card"><div class="num">${subjectsToday}</div><div class="label">Subjects taken today</div></div>
+  `;
+
+  const sorted = allResults.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  document.getElementById("resultsBody").innerHTML = sorted.map(r => `
+    <tr>
+      <td>${r.name}</td>
+      <td>${r.subject}</td>
+      <td>${r.score} / ${r.total}</td>
+      <td>${r.percentage}%</td>
+      <td>${r.date}</td>
+      <td>${r.time}</td>
+    </tr>`).join("") || `<tr><td colspan="6" style="text-align:center; color:var(--muted);">No submissions yet.</td></tr>`;
+}
+
+function downloadCSV(){
+  const headers = ["Name", "Subject", "Score", "Total", "Percentage", "Date", "Time"];
+  const rows = allResults.map(r => [r.name, r.subject, r.score, r.total, r.percentage, r.date, r.time]);
+  const csv = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `oau-cbt-results-${CBT.todayStr().replace(/\s/g, "-")}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("unlockBtn").addEventListener("click", unlock);
+document.getElementById("keyInput").addEventListener("keydown", e => { if(e.key === "Enter") unlock(); });
+document.getElementById("refreshBtn").addEventListener("click", unlock);
+document.getElementById("csvBtn").addEventListener("click", downloadCSV);
+document.getElementById("lockBtn").addEventListener("click", () => {
+  sessionStorage.removeItem("cbt_admin_key");
+  document.getElementById("dashboard").style.display = "none";
+  document.getElementById("gate").style.display = "block";
+  document.getElementById("keyInput").value = "";
+});
+
+// Auto-unlock if key already present this session
+const savedKey = sessionStorage.getItem("cbt_admin_key");
+if(savedKey){
+  document.getElementById("keyInput").value = savedKey;
+  unlock();
+}
+</script>
+</body>
+  </html>
